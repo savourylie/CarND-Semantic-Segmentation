@@ -17,6 +17,11 @@ else:
     print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
 
 
+# Hyperparams:
+g_keep_prob = 0.5
+g_learning_rate = 1e-6
+g_batch_size = 64
+
 def load_vgg(sess, vgg_path):
     """
     Load Pretrained VGG Model into TensorFlow.
@@ -45,22 +50,18 @@ def load_vgg(sess, vgg_path):
 tests.test_load_vgg(load_vgg, tf)
 
 
-def conv_1x1(layer, num_outputs, layer_name):
-    return tf.layers.conv2d(x, num_outputs, 1, 1)
-
-def conv_3x3(layer, num_outputs, layer_name):
-    return tf.layers.conv2d(x, num_outputs, 3, 1)
+def conv_1x1(layer, num_classes, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), layer_name='default_layer'):
+    return tf.layers.conv2d(layer, num_classes, 1, 1, padding=padding, kernel_regularizer=kernel_regularizer, name=layer_name)
 
 
-def upsample(x):
+def upsample(layer, num_outputs, kernel, strides, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3), layer_name='default'):
     """
     Apply a two times upsample on x and return the result.
     :x: 4-Rank Tensor
     :return: TF Operation
     """
-    shape = x.get_shape()
-    
-    return tf.layers.conv2d_transpose(x, shape[3], 1, stride=2)
+
+    return tf.layers.conv2d_transpose(layer, num_outputs, kernel, strides, padding=padding, kernel_regularizer=kernel_regularizer, name=layer_name)
 
 
 def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
@@ -74,24 +75,22 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     """
     # TODO: Implement function
     # Apply a 1x1 convolution to encoder layers
-    skip_from_layer3 = conv_1x1(vgg_layer3_out, 2, layer_name="l3_conv1x1")
-    skip_from_layer4 = conv_1x1(vgg_layer4_out, 2, layer_name="l4_conv1x1")
-    skip_from_layer7 = conv_1x1(vgg_layer7_out, 2, layer_name="l7_conv1x1")
+    l7_conv1x1 = conv_1x1(vgg_layer7_out, num_classes, layer_name="l7_conv1x1")
+    layer4_skip = conv_1x1(vgg_layer4_out, num_classes, layer_name="l4_conv1x1")
+    layer3_skip = conv_1x1(vgg_layer3_out, num_classes, layer_name="l3_conv1x1")
 
     # Add decoder layers to the network with skip connections and upsampling
     # Note: the kernel size and strides are the same as the example in Udacity Lectures
     #       Semantic Segmentation Scene Understanding Lesson 10-9: FCN-8 - Decoder
-    decoderlayer1 = upsample(layer = layer7x, k = 4, s = 2, layer_name = "decoderlayer1")
-    decoderlayer2 = tf.add(decoderlayer1, layer4x, name = "decoderlayer2")
-    decoderlayer3 = upsample(layer = decoderlayer2, k = 4, s = 2, layer_name = "decoderlayer3")
-    decoderlayer4 = tf.add(decoderlayer3, layer3x, name = "decoderlayer4")
+    decoderlayer1 = upsample(layer=l7_conv1x1, num_outputs=num_classes, kernel=4, strides=2, layer_name="decoderlayer1")
+    decoderlayer2 = tf.add(decoderlayer1, layer4_skip, name="decoderlayer2")
+    decoderlayer3 = upsample(layer=decoderlayer2, num_outputs=num_classes, kernel=4, strides=2, layer_name="decoderlayer3")
+    decoderlayer4 = tf.add(decoderlayer3, layer3_skip, name="decoderlayer4")
 
-
-    decoderlayer_output = upsample(layer = decoderlayer4, k = 16, s = 8, layer_name = "decoderlayer_output")
+    decoderlayer_output = upsample(layer=decoderlayer4, num_outputs=num_classes, kernel=16, strides=8, layer_name="decoderlayer_output")
 
     return decoderlayer_output
 
-    return None
 tests.test_layers(layers)
 
 
@@ -105,7 +104,15 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
     # TODO: Implement function
-    return None, None, None
+    logits = tf.reshape(nn_last_layer, (-1, num_classes))
+    labels = tf.reshape(correct_label, (-1, num_classes))
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
+
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    train_op = optimizer.minimize(cross_entropy_loss)
+
+    return logits, train_op, cross_entropy_loss
+
 tests.test_optimize(optimize)
 
 
@@ -125,7 +132,18 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param learning_rate: TF Placeholder for learning rate
     """
     # TODO: Implement function
-    pass
+    for epoch in range(epochs):
+        batch_loss = []
+
+        for image, label in get_batches_fn(batch_size):
+            feed_dict = {input_image: image, correct_label: label, keep_prob: g_keep_prob, learning_rate: g_learning_rate}
+
+            _, loss = sess.run([train_op, cross_entropy_loss], feed_dict=feed_dict)
+            batch_loss.append(loss)
+
+        print("Epoch {0}: Training loss: {1}".format(epoch + 1, sum(batch_loss)))
+
+
 tests.test_train_nn(train_nn)
 
 
@@ -143,6 +161,12 @@ def run():
     # You'll need a GPU with at least 10 teraFLOPS to train on.
     #  https://www.cityscapes-dataset.com/
 
+    # Placeholder tensors
+    correct_label = tf.placeholder(tf.float32, [None, image_shape[0], image_shape[1], num_classes])
+    keep_prob = tf.placeholder(tf.float32)
+    learning_rate = tf.placeholder(tf.float32)
+
+
     with tf.Session() as sess:
         # Path to vgg model
         vgg_path = os.path.join(data_dir, 'vgg')
@@ -153,11 +177,19 @@ def run():
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
         # TODO: Build NN using load_vgg, layers, and optimize function
+        input_image, keep_prob, layer3, layer4, layer7 = load_vgg(sess, vgg_path)
+        decoderlayer_output = layers(layer3, layer4, layer7, num_classes)
+        logits, train_op, cross_entropy_loss = optimize(decoderlayer_output, correct_label, learning_rate, num_classes)
 
         # TODO: Train NN using the train_nn function
+        sess.run(tf.global_variables_initializer())
+
+        train_nn(sess, 10, g_batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
+             correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
-        #  helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+
 
         # OPTIONAL: Apply the trained model to a video
 
