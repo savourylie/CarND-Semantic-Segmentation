@@ -4,6 +4,7 @@ import helper
 import warnings
 from distutils.version import LooseVersion
 import project_tests as tests
+import time
 
 
 # Check TensorFlow Version
@@ -18,9 +19,9 @@ else:
 
 
 # Hyperparams:
-g_keep_prob = 0.5
-g_learning_rate = 1e-6
-g_batch_size = 64
+g_keep_prob = 0.7
+g_learning_rate = 1e-4
+g_batch_size = 16
 
 def load_vgg(sess, vgg_path):
     """
@@ -148,6 +149,8 @@ tests.test_train_nn(train_nn)
 
 
 def run():
+    start_time = time.time()
+
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
@@ -184,7 +187,7 @@ def run():
         # TODO: Train NN using the train_nn function
         sess.run(tf.global_variables_initializer())
 
-        train_nn(sess, 10, g_batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
+        train_nn(sess, 160, g_batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
              correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
@@ -193,6 +196,7 @@ def run():
 
         # OPTIONAL: Apply the trained model to a video
 
+    print("Training and predicting took {} seconds.".format(time.time() - start_time))
 
 if __name__ == '__main__':
     run()
