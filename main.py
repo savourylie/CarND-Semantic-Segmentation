@@ -74,15 +74,10 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
     """
-    # TODO: Implement function
-    # Apply a 1x1 convolution to encoder layers
     l7_conv1x1 = conv_1x1(vgg_layer7_out, num_classes, layer_name="l7_conv1x1")
     layer4_skip = conv_1x1(vgg_layer4_out, num_classes, layer_name="l4_conv1x1")
     layer3_skip = conv_1x1(vgg_layer3_out, num_classes, layer_name="l3_conv1x1")
 
-    # Add decoder layers to the network with skip connections and upsampling
-    # Note: the kernel size and strides are the same as the example in Udacity Lectures
-    #       Semantic Segmentation Scene Understanding Lesson 10-9: FCN-8 - Decoder
     decoderlayer1 = upsample(layer=l7_conv1x1, num_outputs=num_classes, kernel=4, strides=2, layer_name="decoderlayer1")
     decoderlayer2 = tf.add(decoderlayer1, layer4_skip, name="decoderlayer2")
     decoderlayer3 = upsample(layer=decoderlayer2, num_outputs=num_classes, kernel=4, strides=2, layer_name="decoderlayer3")
@@ -104,7 +99,6 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :param num_classes: Number of classes to classify
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
-    # TODO: Implement function
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     labels = tf.reshape(correct_label, (-1, num_classes))
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
@@ -132,7 +126,6 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
-    # TODO: Implement function
     for epoch in range(epochs):
         batch_loss = []
 
@@ -160,15 +153,9 @@ def run():
     # Download pretrained vgg model
     helper.maybe_download_pretrained_vgg(data_dir)
 
-    # OPTIONAL: Train and Inference on the cityscapes dataset instead of the Kitti dataset.
-    # You'll need a GPU with at least 10 teraFLOPS to train on.
-    #  https://www.cityscapes-dataset.com/
-
-    # Placeholder tensors
     correct_label = tf.placeholder(tf.float32, [None, image_shape[0], image_shape[1], num_classes])
     keep_prob = tf.placeholder(tf.float32)
     learning_rate = tf.placeholder(tf.float32)
-
 
     with tf.Session() as sess:
         # Path to vgg model
@@ -176,25 +163,16 @@ def run():
         # Create function to get batches
         get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
 
-        # OPTIONAL: Augment Images for better results
-        #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
-
-        # TODO: Build NN using load_vgg, layers, and optimize function
         input_image, keep_prob, layer3, layer4, layer7 = load_vgg(sess, vgg_path)
         decoderlayer_output = layers(layer3, layer4, layer7, num_classes)
         logits, train_op, cross_entropy_loss = optimize(decoderlayer_output, correct_label, learning_rate, num_classes)
 
-        # TODO: Train NN using the train_nn function
         sess.run(tf.global_variables_initializer())
 
         train_nn(sess, 160, g_batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
              correct_label, keep_prob, learning_rate)
 
-        # TODO: Save inference data using helper.save_inference_samples
         helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
-
-
-        # OPTIONAL: Apply the trained model to a video
 
     print("Training and predicting took {} seconds.".format(time.time() - start_time))
 
